@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ category or 'Shop' }} | Bhuvi Fashions{% endblock %}
+{% block content %}
+<section class="page-title"><span>BHUVІ FASHIONS</span><h1>{{ category or 'Shop Collection' }}</h1></section>
+<div class="shop-toolbar">
+  <p>{{ products|length }} products</p>
+  <div class="filters">
+    <a href="{{ url_for('shop') }}">All</a>
+    {% for parent, children in category_tree %}
+      <a href="{{ url_for('shop', category=parent.name) }}">{{ parent.name }}</a>
+    {% endfor %}
+  </div>
+</div>
+{% if category %}
+  {% for parent, children in category_tree %}
+    {% if parent.name == category and children %}
+    <div class="subcategory-bar">
+      {% for child in children %}
+      <a class="{% if child.name == category %}active{% endif %}" href="{{ url_for('shop', category=child.name) }}">{{ child.name }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  {% endfor %}
+{% endif %}
+<section class="section">
+<div class="products">
+{% for p in products %}
+<article class="product-card">
+  <a href="{{ url_for('product_detail', product_id=p.id) }}">
+    {% if p.image %}<img src="{{ url_for('static', filename='uploads/' + p.image) }}" alt="{{ p.name }}">
+    {% else %}<div class="no-image">BHUVІ</div>{% endif %}
+  </a>
+  <div class="product-info">
+    <small>{{ p.category }}</small><h3>{{ p.name }}</h3>
+    <div class="price">₹{{ '%.0f'|format(p.price * (1-(p.discount or 0)/100)) }} {% if p.discount %}<del>₹{{ '%.0f'|format(p.price) }}</del>{% endif %}</div>
+    <form action="{{ url_for('add_to_cart', product_id=p.id) }}" method="post"><button class="outline-btn">ADD TO CART</button></form>
+  </div>
+</article>
+{% else %}<div class="empty">No {{ category or 'all' }} products found.</div>{% endfor %}
+</div>
+</section>
+{% endblock %}

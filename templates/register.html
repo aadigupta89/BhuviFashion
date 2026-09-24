@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Create Account | Bhuvi Fashions{% endblock %}
+{% block content %}
+<div class="login-box user-login"><div class="account-mark">BF</div><h1>Create Account</h1>
+<p>Join Bhuvi Fashions and manage your orders easily.</p>
+<form method="post"><input name="name" placeholder="Full Name" required>
+<input name="email" type="email" placeholder="Email Address" required>
+<input name="phone" placeholder="Mobile Number">
+<input name="password" type="password" placeholder="Password (minimum 6 characters)" minlength="6" required>
+<button class="btn">CREATE ACCOUNT</button></form>
+<p class="login-bottom">Already registered? <a href="{{ url_for('login') }}">Login</a></p></div>
+{% endblock %}

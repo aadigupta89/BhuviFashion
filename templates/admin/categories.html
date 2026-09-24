@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Categories | Bhuvi Fashions{% endblock %}
+{% block content %}
+<section class="admin-head">
+  <div><span>STORE STRUCTURE</span><h1>Categories & Subcategories</h1></div>
+  <a class="btn" href="{{ url_for('admin_products') }}">PRODUCTS</a>
+</section>
+
+<section class="category-manager">
+  <div class="category-add-card">
+    <h2>Add Category / Subcategory</h2>
+    <p>Create a main category by leaving the parent blank, or select a parent to create a subcategory.</p>
+    <form method="post">
+      <label>Name<input name="name" required placeholder="e.g. Handbags"></label>
+      <label>Parent category
+        <select name="parent_id">
+          <option value="">Main Category</option>
+          {% for p in parents %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="btn">ADD CATEGORY</button>
+    </form>
+  </div>
+
+  <div class="admin-table category-table">
+    <table>
+      <thead><tr><th>Category</th><th>Type</th><th>Products</th><th>Subcategories</th><th>Update</th><th>Delete</th></tr></thead>
+      <tbody>
+      {% for c in categories %}
+      <tr>
+        <td>
+          {% if c.parent_id %}<span class="category-indent">↳</span>{% endif %}
+          <strong>{{ c.name }}</strong>
+          {% if c.parent_name %}<small class="muted">Under {{ c.parent_name }}</small>{% endif %}
+        </td>
+        <td>{{ 'Subcategory' if c.parent_id else 'Main category' }}</td>
+        <td>{{ c.product_count }}</td>
+        <td>{{ c.child_count }}</td>
+        <td>
+          <form method="post" action="{{ url_for('edit_category', category_id=c.id) }}" class="category-edit-form">
+            <input name="name" value="{{ c.name }}" required>
+            <button>Save</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('delete_category', category_id=c.id) }}" onsubmit="return confirm('Delete this category? It must have no products or subcategories.');">
+            <button class="danger-btn" {% if c.product_count or c.child_count %}disabled title="Move/delete products and subcategories first"{% endif %}>Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}<tr><td colspan="6">No categories found.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Checkout | Bhuvi Fashions{% endblock %}
+{% block content %}
+<section class="page-title"><span>BHUVІ FASHIONS</span><h1>Checkout</h1></section>
+<form class="checkout" method="post">
+  <label>Name<input name="customer_name" required></label>
+  <label>Mobile Number<input name="phone" required></label>
+  <label>Delivery Address<textarea name="address" rows="5" required></textarea></label>
+  <button class="btn">PLACE ORDER</button>
+</form>
+{% endblock %}

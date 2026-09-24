@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="admin-head"><div><span>PRODUCT MANAGEMENT</span><h1>{{ 'Edit Product' if product else 'Add Product' }}</h1></div></section>
+<form class="product-form" method="post" enctype="multipart/form-data">
+<label>Product Name<input name="name" required value="{{ product.name if product else '' }}"></label>
+
+<label>Main Category
+<select name="main_category_id" id="main-category" required>
+  <option value="">Select main category</option>
+  {% for p in parents %}
+  <option value="{{ p.id }}" {% if selected_parent_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+  {% endfor %}
+</select></label>
+
+<label id="subcategory-wrap">Subcategory
+<select name="category_id" id="category-id" required>
+  <option value="">Select category / subcategory</option>
+  {% for c in categories %}
+  {% if c.parent_id %}
+  <option value="{{ c.id }}" data-parent="{{ c.parent_id }}" {% if product and product.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+  {% endif %}
+  {% endfor %}
+</select>
+</label>
+
+<div id="direct-category-help" class="form-help">This main category has no subcategories, so products will be stored directly under the category name.</div>
+
+<label>Price (₹)<input name="price" type="number" step="0.01" min="0" required value="{{ product.price if product else '' }}"></label>
+<label>Discount (%)<input name="discount" type="number" step="0.01" min="0" max="100" value="{{ product.discount if product else 0 }}"></label>
+<label>Stock<input name="stock" type="number" min="0" required value="{{ product.stock if product else 0 }}"></label>
+<label>Description<textarea name="description" rows="6" placeholder="Fabric, fit, colour, care, etc.">{{ product.description if product else '' }}</textarea></label>
+
+<label>Product Photos & Videos
+  <input name="media" type="file" accept="image/*,video/mp4,video/webm,video/quicktime,video/x-m4v" multiple>
+  <small class="form-help">Select multiple files at once. JPG, PNG, WEBP, GIF, MP4, WEBM, MOV and M4V are supported. Maximum total upload size is 100 MB.</small>
+</label>
+
+{% if media %}
+<div class="existing-media">
+  <h3>Current Photos & Videos</h3>
+  <div class="media-admin-grid">
+  {% for item in media %}
+    <div class="media-admin-card">
+      {% if item.media_type == 'video' %}
+        <video controls src="{{ url_for('static', filename='uploads/' + item.filename) }}"></video>
+      {% else %}
+        <img src="{{ url_for('static', filename='uploads/' + item.filename) }}" alt="Product media">
+      {% endif %}
+      <form method="post" action="{{ url_for('delete_product_media', media_id=item.id) }}" onsubmit="return confirm('Delete this media?');">
+        <button class="danger-btn">Delete</button>
+      </form>
+    </div>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if product %}<label class="check"><input type="checkbox" name="active" {% if product.active %}checked{% endif %}> Show product on website</label>{% endif %}
+<button class="btn">{{ 'UPDATE PRODUCT' if product else 'ADD PRODUCT' }}</button>
+</form>
+
+<script>
+const mainCategory = document.getElementById('main-category');
+const categorySelect = document.getElementById('category-id');
+const subcategoryWrap = document.getElementById('subcategory-wrap');
+const help = document.getElementById('direct-category-help');
+
+function updateCategoryOptions() {
+  const parentId = mainCategory.value;
+  const options = [...categorySelect.querySelectorAll('option[data-parent]')];
+  options.forEach(option => {
+    option.hidden = !parentId || option.dataset.parent !== parentId;
+  });
+  const hasChildren = options.some(option => !option.hidden);
+  subcategoryWrap.hidden = !hasChildren;
+  help.hidden = hasChildren || !parentId;
+  if (!hasChildren && parentId) {
+    categorySelect.value = parentId;
+    categorySelect.removeAttribute('required');
+  } else {
+    categorySelect.setAttribute('required', 'required');
+    if (![...options].some(o => o.value === categorySelect.value && !o.hidden)) categorySelect.value = '';
+  }
+}
+mainCategory.addEventListener('change', updateCategoryOptions);
+updateCategoryOptions();
+</script>
+{% endblock %}

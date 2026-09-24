@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="admin-head"><div><span>BHUVІ FASHIONS</span><h1>Admin Dashboard</h1></div><a href="{{ url_for('admin_logout') }}">Logout</a></section>
+<div class="admin-nav">
+  <a href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+  <a href="{{ url_for('admin_products') }}">Products</a>
+  <a href="{{ url_for('admin_categories') }}">Categories</a>
+  <a href="{{ url_for('add_product') }}">+ Add Product</a>
+  <a href="{{ url_for('admin_orders') }}">Orders</a>
+</div>
+<section class="stats">
+  <div><span>Products</span><b>{{ product_count }}</b></div>
+  <div><span>Orders</span><b>{{ order_count }}</b></div>
+  <div><span>Total Sales</span><b>₹{{ '%.0f'|format(sales) }}</b></div>
+  <div><span>Low Stock</span><b>{{ low_stock }}</b></div>
+  <div><span>Categories</span><b>{{ category_count }}</b></div>
+  <div><span>Photos / Videos</span><b>{{ media_count }}</b></div>
+</section>
+{% endblock %}

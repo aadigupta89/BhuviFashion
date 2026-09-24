@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name }} | Bhuvi Fashions{% endblock %}
+{% block content %}
+<section class="detail">
+  <div class="detail-gallery">
+    <div class="media-main" id="mediaMain">
+      {% set first = media[0] if media else None %}
+      {% if first and first.media_type == 'video' %}
+        <video controls playsinline src="{{ url_for('static', filename='uploads/' + first.filename) }}"></video>
+      {% elif first %}
+        <img src="{{ url_for('static', filename='uploads/' + first.filename) }}" alt="{{ product.name }}">
+      {% elif product.image %}
+        <img src="{{ url_for('static', filename='uploads/' + product.image) }}" alt="{{ product.name }}">
+      {% else %}
+        <div class="no-image">BHUVІ FASHIONS</div>
+      {% endif %}
+    </div>
+    {% if media|length > 1 %}
+    <div class="media-thumbs">
+      {% for item in media %}
+      <button type="button" class="media-thumb" onclick="showMedia('{{ item.media_type }}','{{ url_for('static', filename='uploads/' + item.filename) }}')">
+        {% if item.media_type == 'video' %}
+          <span class="video-thumb">▶ VIDEO</span>
+        {% else %}
+          <img src="{{ url_for('static', filename='uploads/' + item.filename) }}" alt="{{ product.name }}">
+        {% endif %}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  <div class="detail-info">
+    <small>{{ product.category }}</small>
+    <h1>{{ product.name }}</h1>
+    <div class="big-price">₹{{ '%.0f'|format(product.price * (1-(product.discount or 0)/100)) }}
+      {% if product.discount %}<del>₹{{ '%.0f'|format(product.price) }}</del><b>{{ product.discount|int }}% OFF</b>{% endif %}
+    </div>
+    <p>{{ product.description }}</p>
+    <p class="stock">{{ product.stock }} available</p>
+    <form action="{{ url_for('add_to_cart', product_id=product.id) }}" method="post">
+      <button class="btn" {% if product.stock <= 0 %}disabled{% endif %}>ADD TO CART</button>
+    </form>
+  </div>
+</section>
+<script>
+function showMedia(type, src) {
+  const main = document.getElementById('mediaMain');
+  if (type === 'video') {
+    main.innerHTML = `<video controls autoplay playsinline src="${src}"></video>`;
+  } else {
+    main.innerHTML = `<img src="${src}" alt="Product image">`;
+  }
+}
+</script>
+{% endblock %}

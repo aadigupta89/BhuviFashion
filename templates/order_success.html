@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="success-page"><div class="success-icon">✓</div><h1>Order Placed!</h1><p>Thank you for shopping with Bhuvi Fashions.</p><p>Your order number is <strong>#{{ order_id }}</strong>.</p><a class="btn" href="{{ url_for('shop') }}">CONTINUE SHOPPING</a></div>
+{% endblock %}

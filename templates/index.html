@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Bhuvi Fashions | Elevate Your Style{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">BHUVІ FASHIONS</p>
+    <h1>Elegance that<br><span>speaks for you.</span></h1>
+    <p>Discover fashionable pieces designed to bring confidence, comfort and timeless style to every occasion.</p>
+    <a class="btn" href="{{ url_for('shop') }}">SHOP COLLECTION</a>
+  </div>
+  <div class="hero-logo"><img src="{{ url_for('static', filename='logo.png') }}"></div>
+</section>
+
+<section class="section">
+  <div class="section-heading">
+    <div><span>CURATED FOR YOU</span><h2>New Arrivals</h2></div>
+    <a href="{{ url_for('shop') }}">View All →</a>
+  </div>
+  <div class="products">
+    {% for p in products %}
+    <article class="product-card">
+      <a href="{{ url_for('product_detail', product_id=p.id) }}">
+        {% if p.image %}<img src="{{ url_for('static', filename='uploads/' + p.image) }}" alt="{{ p.name }}">
+        {% else %}<div class="no-image">BHUVI</div>{% endif %}
+      </a>
+      <div class="product-info">
+        <small>{{ p.category }}</small>
+        <h3>{{ p.name }}</h3>
+        <div class="price">₹{{ '%.0f'|format(p.price * (1-(p.discount or 0)/100)) }}
+          {% if p.discount %}<del>₹{{ '%.0f'|format(p.price) }}</del>{% endif %}
+        </div>
+        <form action="{{ url_for('add_to_cart', product_id=p.id) }}" method="post">
+          <button class="outline-btn">ADD TO CART</button>
+        </form>
+      </div>
+    </article>
+    {% else %}
+      <div class="empty">Your products will appear here after you add them from the Admin Panel.</div>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="categories">
+  <a href="{{ url_for('shop', category='Women') }}"><span>01</span><h2>Women</h2><p>Elegant looks for every occasion</p></a>
+  <a href="{{ url_for('shop', category='Men') }}"><span>02</span><h2>Men</h2><p>Classic and contemporary styles</p></a>
+  <a href="{{ url_for('shop', category='Kids') }}"><span>03</span><h2>Kids</h2><p>Comfortable fashion for little ones</p></a>
+</section>
+{% endblock %}

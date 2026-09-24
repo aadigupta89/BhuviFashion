@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}My Account | Bhuvi Fashions{% endblock %}
+{% block content %}
+<section class="page-title"><span>BHUVІ FASHIONS</span><h1>My Account</h1></section>
+<div class="account-page">
+<aside class="account-sidebar"><div class="account-avatar">BF</div><h2>{{ user.name }}</h2>
+<p>{{ user.email }}</p>{% if user.phone %}<p>{{ user.phone }}</p>{% endif %}
+<a href="{{ url_for('logout') }}" class="logout-link">Logout</a></aside>
+<main class="account-content">
+<div class="account-welcome"><span>WELCOME</span><h2>Hello, {{ user.name }}!</h2>
+<p>Manage your profile and view your Bhuvi Fashions orders from here.</p></div>
+<div class="account-section"><div class="account-section-title"><h2>My Orders</h2>
+<a href="{{ url_for('shop') }}">Continue Shopping →</a></div>
+{% if orders %}{% for order in orders %}
+<div class="order-card"><div><small>ORDER #{{ order.id }}</small><h3>₹{{ '%.0f'|format(order.total) }}</h3></div>
+<div><span class="order-status">{{ order.status }}</span><p>{{ order.created_at }}</p></div></div>
+{% endfor %}{% else %}
+<div class="empty account-empty"><p>You haven't placed any orders yet.</p>
+<a href="{{ url_for('shop') }}">Start Shopping →</a></div>{% endif %}
+</div></main></div>
+{% endblock %}

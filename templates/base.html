@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Bhuvi Fashions{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="site-header">
+  <div class="topbar">ELEVATE YOUR STYLE • Bhuvi Fashions</div>
+  <nav class="nav">
+    <a class="brand" href="{{ url_for('index') }}">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="Bhuvi Fashions">
+    </a>
+    <div class="links">
+      <a href="{{ url_for('index') }}">Home</a>
+      <a href="{{ url_for('shop') }}">Shop</a>
+      {% for parent, children in category_tree %}
+      <div class="nav-dropdown">
+        <a href="{{ url_for('shop', category=parent.name) }}">{{ parent.name }}</a>
+        {% if children %}
+        <div class="nav-dropdown-menu">
+          {% for child in children %}
+          <a href="{{ url_for('shop', category=child.name) }}">{{ child.name }}</a>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <div class="actions">
+      <form action="{{ url_for('shop') }}" method="get" class="search">
+        <input name="q" placeholder="Search..." value="{{ request.args.get('q','') }}">
+        <button>⌕</button>
+      </form>
+      {% if session.get("user_id") %}
+      <a href="{{ url_for('account') }}" class="account-link">👤 {{ session.get("user_name") }}</a>
+      {% else %}
+      <a href="{{ url_for('login') }}" class="account-link">👤 Login</a>
+      {% endif %}
+      <a href="{{ url_for('cart') }}" class="cart">🛍 Cart</a>
+    </div>
+  </nav>
+</header>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="flash-wrap">
+{% for category, message in messages %}
+<div class="flash {{ category }}">{{ message }}</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+{% block content %}{% endblock %}
+
+<footer>
+  <div>
+    <img src="{{ url_for('static', filename='logo.png') }}" alt="Bhuvi Fashions">
+    <p>Elevate Your Style</p>
+  </div>
+  <div>
+    <h3>Shop</h3>
+    {% for parent, children in category_tree %}
+      <a href="{{ url_for('shop', category=parent.name) }}">{{ parent.name }}</a>
+    {% endfor %}
+  </div>
+  <div>
+    <h3>Customer Care</h3>
+    <p>Orders & Support</p>
+    <p>Shipping Information</p>
+    <p>Returns & Exchange</p>
+  </div>
+</footer>
+</body>
+</html>
