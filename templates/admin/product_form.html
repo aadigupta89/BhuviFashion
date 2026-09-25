@@ -28,6 +28,16 @@
 <label>Price (₹)<input name="price" type="number" step="0.01" min="0" required value="{{ product.price if product else '' }}"></label>
 <label>Discount (%)<input name="discount" type="number" step="0.01" min="0" max="100" value="{{ product.discount if product else 0 }}"></label>
 <label>Stock<input name="stock" type="number" min="0" required value="{{ product.stock if product else 0 }}"></label>
+
+<div class="size-selector">
+  <span class="size-title">Available Sizes</span>
+  <small class="form-help">Select all sizes available for this product. Customers will be required to choose one before adding it to the cart.</small>
+  <div class="size-options">
+    {% for size in ['38','40','42','44','46','48'] %}
+    <label class="size-option"><input type="checkbox" name="sizes" value="{{ size }}" {% if size in selected_sizes %}checked{% endif %}> <span>{{ size }}</span></label>
+    {% endfor %}
+  </div>
+</div>
 <label>Description<textarea name="description" rows="6" placeholder="Fabric, fit, colour, care, etc.">{{ product.description if product else '' }}</textarea></label>
 
 <label>Product Photos & Videos

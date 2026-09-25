@@ -37,7 +37,17 @@
     </div>
     <p>{{ product.description }}</p>
     <p class="stock">{{ product.stock }} available</p>
+    {% set product_sizes = product.sizes|from_json %}
     <form action="{{ url_for('add_to_cart', product_id=product.id) }}" method="post">
+      {% if product_sizes %}
+      <div class="detail-size-selector">
+        <label for="product-size"><strong>Select Size</strong></label>
+        <select id="product-size" name="size" required>
+          <option value="">Select size</option>
+          {% for size in product_sizes %}<option value="{{ size }}">{{ size }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
       <button class="btn" {% if product.stock <= 0 %}disabled{% endif %}>ADD TO CART</button>
     </form>
   </div>

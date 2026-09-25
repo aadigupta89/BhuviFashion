@@ -8,8 +8,8 @@
 {% for item in items %}
 <div class="cart-item">
   {% if item.product.image %}<img src="{{ url_for('static', filename='uploads/' + item.product.image) }}">{% endif %}
-  <div><h3>{{ item.product.name }}</h3><p>{{ item.product.category }} • Qty {{ item.qty }}</p><strong>₹{{ '%.0f'|format(item.sale_price * item.qty) }}</strong></div>
-  <form method="post" action="{{ url_for('remove_from_cart', product_id=item.product.id) }}"><button class="remove">Remove</button></form>
+  <div><h3>{{ item.product.name }}</h3><p>{{ item.product.category }}{% if item.size %} • Size {{ item.size }}{% endif %} • Qty {{ item.qty }}</p><strong>₹{{ '%.0f'|format(item.sale_price * item.qty) }}</strong></div>
+  <form method="post" action="{{ url_for('remove_from_cart', product_id=item.product.id) }}"><input type="hidden" name="size" value="{{ item.size }}"><button class="remove">Remove</button></form>
 </div>
 {% endfor %}
 </div>

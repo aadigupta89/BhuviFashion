@@ -1,0 +1,9 @@
+
+/* Product size selection */
+.size-selector { margin: 8px 0 18px; }
+.size-title { display:block; font-weight:700; margin-bottom:4px; }
+.size-options { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+.size-option { display:inline-flex; align-items:center; gap:6px; border:1px solid #ddd; padding:8px 12px; cursor:pointer; background:#fff; }
+.size-option input { accent-color:#111; }
+.card-size-select, .detail-size-selector select { width:100%; padding:11px 12px; border:1px solid #ccc; background:#fff; margin:8px 0 10px; }
+.detail-size-selector { margin:18px 0 12px; max-width:280px; }

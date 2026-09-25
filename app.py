@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import json
 import uuid
 import secrets
 import smtplib
@@ -36,6 +37,14 @@ DEFAULT_CATEGORIES = [
 ]
 
 app = Flask(__name__)
+
+@app.template_filter("from_json")
+def from_json_filter(value):
+    try:
+        return json.loads(value or "[]")
+    except (TypeError, json.JSONDecodeError):
+        return []
+
 app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret-key")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
@@ -75,6 +84,7 @@ def init_db():
         stock INTEGER DEFAULT 0,
         image TEXT,
         active INTEGER DEFAULT 1,
+        sizes TEXT DEFAULT '[]',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS orders (
@@ -91,7 +101,8 @@ def init_db():
         order_id INTEGER,
         product_id INTEGER,
         quantity INTEGER,
-        price REAL
+        price REAL,
+        size TEXT
     );
     CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,6 +143,10 @@ def init_db():
     # Migrate older databases that did not have category_id.
     if "category_id" not in table_columns(conn, "products"):
         conn.execute("ALTER TABLE products ADD COLUMN category_id INTEGER")
+    if "sizes" not in table_columns(conn, "products"):
+        conn.execute("ALTER TABLE products ADD COLUMN sizes TEXT DEFAULT '[]'")
+    if "size" not in table_columns(conn, "order_items"):
+        conn.execute("ALTER TABLE order_items ADD COLUMN size TEXT")
 
     # Seed the original Bhuvi Fashions categories without overwriting admin changes.
     for name, parent_name, sort_order in DEFAULT_CATEGORIES:
@@ -309,26 +324,57 @@ def product_detail(product_id):
 @app.route("/cart")
 def cart():
     cart_items = session.get("cart", {})
-    ids = [int(x) for x in cart_items.keys()]
     products = []
     total = 0
+    ids = []
+    for key in cart_items:
+        try:
+            ids.append(int(str(key).split("|", 1)[0]))
+        except (ValueError, TypeError):
+            pass
+    ids = sorted(set(ids))
     if ids:
         conn = get_db()
         placeholders = ",".join("?" for _ in ids)
         rows = conn.execute(f"SELECT * FROM products WHERE id IN ({placeholders})", ids).fetchall()
         conn.close()
-        for p in rows:
-            qty = int(cart_items.get(str(p["id"]), 0))
+        by_id = {p["id"]: p for p in rows}
+        for key, raw_qty in cart_items.items():
+            parts = str(key).split("|", 1)
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            p = by_id.get(pid)
+            if not p:
+                continue
+            size = parts[1] if len(parts) > 1 and parts[1] else ""
+            qty = int(raw_qty or 0)
             sale_price = p["price"] * (1 - (p["discount"] or 0) / 100)
             total += sale_price * qty
-            products.append({"product": p, "qty": qty, "sale_price": sale_price})
+            products.append({"product": p, "qty": qty, "size": size, "sale_price": sale_price})
     return render_template("cart.html", items=products, total=total)
 
 
 @app.post("/cart/add/<int:product_id>")
 def add_to_cart(product_id):
+    conn = get_db()
+    product = conn.execute("SELECT * FROM products WHERE id=? AND active=1", (product_id,)).fetchone()
+    conn.close()
+    if not product:
+        flash("Product not found.", "danger")
+        return redirect(request.referrer or url_for("shop"))
+    sizes = []
+    try:
+        sizes = json.loads(product["sizes"] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        sizes = []
+    size = request.form.get("size", "").strip()
+    if sizes and size not in sizes:
+        flash("Please select a size before adding this product to cart.", "danger")
+        return redirect(request.referrer or url_for("product_detail", product_id=product_id))
+    key = f"{product_id}|{size}"
     cart = session.get("cart", {})
-    key = str(product_id)
     cart[key] = int(cart.get(key, 0)) + 1
     session["cart"] = cart
     flash("Product added to cart.", "success")
@@ -338,6 +384,9 @@ def add_to_cart(product_id):
 @app.post("/cart/remove/<int:product_id>")
 def remove_from_cart(product_id):
     cart = session.get("cart", {})
+    size = request.form.get("size", "").strip()
+    cart.pop(f"{product_id}|{size}", None)
+    # Remove legacy entries too, if present.
     cart.pop(str(product_id), None)
     session["cart"] = cart
     return redirect(url_for("cart"))
@@ -353,24 +402,44 @@ def checkout():
         if not cart_items:
             return redirect(url_for("cart"))
         conn = get_db()
-        ids = [int(x) for x in cart_items.keys()]
+        ids = []
+        parsed_items = []
+        for key, raw_qty in cart_items.items():
+            parts = str(key).split("|", 1)
+            try:
+                pid = int(parts[0])
+            except ValueError:
+                continue
+            size = parts[1] if len(parts) > 1 else ""
+            qty = int(raw_qty or 0)
+            if qty > 0:
+                parsed_items.append((pid, size, qty))
+                ids.append(pid)
+        if not parsed_items:
+            conn.close()
+            return redirect(url_for("cart"))
+        ids = sorted(set(ids))
         placeholders = ",".join("?" for _ in ids)
         rows = conn.execute(f"SELECT * FROM products WHERE id IN ({placeholders})", ids).fetchall()
+        by_id = {p["id"]: p for p in rows}
         total = 0
-        for p in rows:
-            qty = int(cart_items[str(p["id"])])
-            total += p["price"] * (1 - (p["discount"] or 0) / 100) * qty
+        for pid, size, qty in parsed_items:
+            p = by_id.get(pid)
+            if p:
+                total += p["price"] * (1 - (p["discount"] or 0) / 100) * qty
         cur = conn.execute(
             "INSERT INTO orders(customer_name,phone,address,total) VALUES(?,?,?,?)",
             (request.form["customer_name"], request.form["phone"], request.form["address"], total)
         )
         order_id = cur.lastrowid
-        for p in rows:
-            qty = int(cart_items[str(p["id"])])
+        for pid, size, qty in parsed_items:
+            p = by_id.get(pid)
+            if not p:
+                continue
             sale_price = p["price"] * (1 - (p["discount"] or 0) / 100)
             conn.execute(
-                "INSERT INTO order_items(order_id,product_id,quantity,price) VALUES(?,?,?,?)",
-                (order_id, p["id"], qty, sale_price)
+                "INSERT INTO order_items(order_id,product_id,quantity,price,size) VALUES(?,?,?,?,?)",
+                (order_id, p["id"], qty, sale_price, size or None)
             )
             conn.execute("UPDATE products SET stock=MAX(stock-?,0) WHERE id=?", (qty, p["id"]))
         conn.commit()
@@ -789,13 +858,13 @@ def add_product():
 
         try:
             cur = conn.execute("""
-                INSERT INTO products(name,category,category_id,description,price,discount,stock,image,active)
-                VALUES(?,?,?,?,?,?,?,?,1)
+                INSERT INTO products(name,category,category_id,description,price,discount,stock,image,active,sizes)
+                VALUES(?,?,?,?,?,?,?,?,1,?)
             """, (
                 request.form["name"].strip(), selected["name"], selected["id"],
                 request.form.get("description", "").strip(),
                 float(request.form["price"]), float(request.form.get("discount") or 0),
-                int(request.form.get("stock") or 0), None
+                int(request.form.get("stock") or 0), None, json.dumps(request.form.getlist("sizes"))
             ))
             product_id = cur.lastrowid
             first_image = upload_product_media(conn, product_id, request.files.getlist("media"))
@@ -811,7 +880,7 @@ def add_product():
             flash("Please check the product details and try again.", "danger")
             return redirect(url_for("add_product"))
     conn.close()
-    return render_template("admin/product_form.html", product=None, categories=categories, parents=parents, media=[], selected_parent_id=None)
+    return render_template("admin/product_form.html", product=None, categories=categories, parents=parents, media=[], selected_parent_id=None, selected_sizes=[])
 
 
 @app.route("/admin/products/edit/<int:product_id>", methods=["GET", "POST"])
@@ -834,11 +903,11 @@ def edit_product(product_id):
             return redirect(url_for("edit_product", product_id=product_id))
         try:
             conn.execute("""UPDATE products SET name=?,category=?,category_id=?,description=?,price=?,
-                discount=?,stock=?,active=? WHERE id=?""", (
+                discount=?,stock=?,active=?,sizes=? WHERE id=?""", (
                 request.form["name"].strip(), selected["name"], selected["id"],
                 request.form.get("description", "").strip(), float(request.form["price"]),
                 float(request.form.get("discount") or 0), int(request.form.get("stock") or 0),
-                1 if request.form.get("active") else 0, product_id
+                1 if request.form.get("active") else 0, json.dumps(request.form.getlist("sizes")), product_id
             ))
             first_image = upload_product_media(conn, product_id, request.files.getlist("media"))
             if first_image and not product["image"]:
@@ -859,7 +928,12 @@ def edit_product(product_id):
         if selected_category:
             selected_parent_id = selected_category["parent_id"] or selected_category["id"]
     conn.close()
-    return render_template("admin/product_form.html", product=product, categories=categories, parents=parents, media=media, selected_parent_id=selected_parent_id)
+    selected_sizes = []
+    try:
+        selected_sizes = json.loads(product["sizes"] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        selected_sizes = []
+    return render_template("admin/product_form.html", product=product, categories=categories, parents=parents, media=media, selected_parent_id=selected_parent_id, selected_sizes=selected_sizes)
 
 
 @app.post("/admin/products/media/delete/<int:media_id>")

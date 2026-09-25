@@ -33,7 +33,11 @@
   <div class="product-info">
     <small>{{ p.category }}</small><h3>{{ p.name }}</h3>
     <div class="price">₹{{ '%.0f'|format(p.price * (1-(p.discount or 0)/100)) }} {% if p.discount %}<del>₹{{ '%.0f'|format(p.price) }}</del>{% endif %}</div>
-    <form action="{{ url_for('add_to_cart', product_id=p.id) }}" method="post"><button class="outline-btn">ADD TO CART</button></form>
+    {% set product_sizes = p.sizes|from_json %}
+        <form action="{{ url_for('add_to_cart', product_id=p.id) }}" method="post">
+          {% if product_sizes %}<select name="size" required class="card-size-select"><option value="">Select size</option>{% for size in product_sizes %}<option value="{{ size }}">Size {{ size }}</option>{% endfor %}</select>{% endif %}
+          <button class="outline-btn">ADD TO CART</button>
+        </form>
   </div>
 </article>
 {% else %}<div class="empty">No {{ category or 'all' }} products found.</div>{% endfor %}
