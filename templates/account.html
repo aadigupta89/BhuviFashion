@@ -5,6 +5,7 @@
 <div class="account-page">
 <aside class="account-sidebar"><div class="account-avatar">BF</div><h2>{{ user.name }}</h2>
 <p>{{ user.email }}</p>{% if user.phone %}<p>{{ user.phone }}</p>{% endif %}
+<a href="{{ url_for('change_password') }}" class="logout-link">Change Password</a>
 <a href="{{ url_for('logout') }}" class="logout-link">Logout</a></aside>
 <main class="account-content">
 <div class="account-welcome"><span>WELCOME</span><h2>Hello, {{ user.name }}!</h2>

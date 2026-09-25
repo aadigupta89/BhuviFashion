@@ -1,6 +1,10 @@
 import os
 import sqlite3
 import uuid
+import secrets
+import smtplib
+from email.message import EmailMessage
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 from werkzeug.utils import secure_filename
@@ -32,7 +36,7 @@ DEFAULT_CATEGORIES = [
 ]
 
 app = Flask(__name__)
-app.secret_key = "change-this-secret-key"
+app.secret_key = os.environ.get("SECRET_KEY", "change-this-secret-key")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -107,6 +111,22 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS admins (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token_hash TEXT UNIQUE NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
     """)
 
     # Migrate older databases that did not have category_id.
@@ -152,8 +172,26 @@ def init_db():
                 (row["id"], row["image"], media_type),
             )
 
+    # Create the initial admin account only if one does not exist.
+    # Credentials can be supplied through Render environment variables.
+    admin_username = os.environ.get("ADMIN_USERNAME", "admin").strip() or "admin"
+    admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
+    existing_admin = conn.execute("SELECT id FROM admins LIMIT 1").fetchone()
+    if not existing_admin:
+        conn.execute(
+            "INSERT INTO admins(username,password) VALUES(?,?)",
+            (admin_username, generate_password_hash(admin_password)),
+        )
+
     conn.commit()
     conn.close()
+
+
+def normalize_phone(phone):
+    digits = "".join(ch for ch in (phone or "") if ch.isdigit())
+    if digits.startswith("91") and len(digits) > 10:
+        digits = digits[-10:]
+    return digits
 
 
 def admin_required(f):
@@ -347,21 +385,32 @@ def register():
     if session.get("user_id"):
         return redirect(url_for("account"))
     if request.method == "POST":
-        name = request.form["name"].strip()
-        email = request.form["email"].strip().lower()
-        phone = request.form.get("phone", "").strip()
-        password = request.form["password"]
-        if len(password) < 6:
-            flash("Password must be at least 6 characters.", "danger")
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        phone = normalize_phone(request.form.get("phone", ""))
+        password = request.form.get("password", "")
+        if len(password) < 8:
+            flash("Password must be at least 8 characters.", "danger")
+            return render_template("register.html")
+        if len(phone) != 10:
+            flash("Please enter a valid 10-digit mobile number.", "danger")
             return render_template("register.html")
         conn = get_db()
         try:
+            if conn.execute("SELECT 1 FROM users WHERE lower(email)=?", (email,)).fetchone():
+                raise ValueError("email")
+            if conn.execute("SELECT 1 FROM users WHERE phone=?", (phone,)).fetchone():
+                raise ValueError("phone")
             conn.execute("INSERT INTO users(name,email,phone,password) VALUES(?,?,?,?)",
                          (name, email, phone, generate_password_hash(password)))
             conn.commit()
+        except ValueError as exc:
+            conn.close()
+            flash("This email is already registered. Please login." if str(exc) == "email" else "This mobile number is already registered. Please login.", "danger")
+            return render_template("register.html")
         except sqlite3.IntegrityError:
             conn.close()
-            flash("This email is already registered. Please login.", "danger")
+            flash("This account could not be created. Please check your details.", "danger")
             return render_template("register.html")
         conn.close()
         flash("Account created successfully. Please login.", "success")
@@ -374,16 +423,21 @@ def login():
     if session.get("user_id"):
         return redirect(url_for("account"))
     if request.method == "POST":
-        email = request.form["email"].strip().lower()
-        password = request.form["password"]
+        identifier = request.form.get("identifier", "").strip()
+        password = request.form.get("password", "")
+        phone = normalize_phone(identifier)
+        email = identifier.lower()
         conn = get_db()
-        user = conn.execute("SELECT * FROM users WHERE email=?", (email,)).fetchone()
+        user = conn.execute(
+            "SELECT * FROM users WHERE lower(email)=? OR phone=? OR phone=? LIMIT 1",
+            (email, phone, identifier),
+        ).fetchone()
         conn.close()
         if user and check_password_hash(user["password"], password):
             session["user_id"] = user["id"]
             session["user_name"] = user["name"]
             return redirect(url_for("account"))
-        flash("Invalid email or password.", "danger")
+        flash("Invalid email/mobile number or password.", "danger")
     return render_template("login.html")
 
 
@@ -409,14 +463,157 @@ def account():
     return render_template("account.html", user=user, orders=orders)
 
 
+@app.route("/account/change-password", methods=["GET", "POST"])
+def change_password():
+    if not session.get("user_id"):
+        return redirect(url_for("login"))
+    if request.method == "POST":
+        current = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        if len(new_password) < 8:
+            flash("New password must be at least 8 characters.", "danger")
+            return render_template("change_password.html", user_type="customer")
+        if new_password != confirm:
+            flash("New password and confirmation do not match.", "danger")
+            return render_template("change_password.html", user_type="customer")
+        conn = get_db()
+        user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        if not user or not check_password_hash(user["password"], current):
+            conn.close()
+            flash("Current password is incorrect.", "danger")
+            return render_template("change_password.html", user_type="customer")
+        conn.execute("UPDATE users SET password=? WHERE id=?",
+                     (generate_password_hash(new_password), user["id"]))
+        conn.commit()
+        conn.close()
+        flash("Your password has been changed successfully.", "success")
+        return redirect(url_for("account"))
+    return render_template("change_password.html", user_type="customer")
+
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        conn = get_db()
+        user = conn.execute("SELECT id,name,email FROM users WHERE lower(email)=?", (email,)).fetchone()
+        if user:
+            raw_token = secrets.token_urlsafe(32)
+            token_hash = generate_password_hash(raw_token)
+            expires = datetime.now(timezone.utc) + timedelta(minutes=30)
+            conn.execute("DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at < ?",
+                         (user["id"], datetime.now(timezone.utc).isoformat()))
+            conn.execute("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at) VALUES(?,?,?)",
+                         (user["id"], token_hash, expires.isoformat()))
+            conn.commit()
+            smtp_host = os.environ.get("SMTP_HOST")
+            smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+            smtp_user = os.environ.get("SMTP_USER")
+            smtp_password = os.environ.get("SMTP_PASSWORD")
+            smtp_from = os.environ.get("SMTP_FROM", smtp_user or "")
+            if smtp_host and smtp_user and smtp_password and smtp_from:
+                reset_url = url_for("reset_password", token=raw_token, _external=True)
+                msg = EmailMessage()
+                msg["Subject"] = "Bhuvi Fashions - Password Reset"
+                msg["From"] = smtp_from
+                msg["To"] = user["email"]
+                msg.set_content(f"Hello {user['name']},\n\nUse this link to reset your Bhuvi Fashions password. The link expires in 30 minutes.\n\n{reset_url}\n\nIf you did not request this, you can ignore this email.")
+                try:
+                    with smtplib.SMTP(smtp_host, smtp_port, timeout=20) as server:
+                        server.starttls()
+                        server.login(smtp_user, smtp_password)
+                        server.send_message(msg)
+                except Exception:
+                    conn.close()
+                    flash("We could not send the reset email right now. Please try again later.", "danger")
+                    return render_template("forgot_password.html")
+            else:
+                # Do not expose reset tokens when email is not configured.
+                conn.close()
+                flash("Password reset email is not configured yet. Please contact the store administrator.", "danger")
+                return render_template("forgot_password.html")
+        conn.close()
+        flash("If an account exists for that email, a password reset link has been sent.", "success")
+        return render_template("forgot_password.html")
+    return render_template("forgot_password.html")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM password_reset_tokens WHERE used=0 AND expires_at > ? ORDER BY id DESC",
+                        (datetime.now(timezone.utc).isoformat(),)).fetchall()
+    token_row = next((row for row in rows if check_password_hash(row["token_hash"], token)), None)
+    if not token_row:
+        conn.close()
+        flash("This password reset link is invalid or expired.", "danger")
+        return redirect(url_for("forgot_password"))
+    if request.method == "POST":
+        new_password = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        if len(new_password) < 8:
+            flash("Password must be at least 8 characters.", "danger")
+            conn.close()
+            return render_template("reset_password.html")
+        if new_password != confirm:
+            flash("Passwords do not match.", "danger")
+            conn.close()
+            return render_template("reset_password.html")
+        conn.execute("UPDATE users SET password=? WHERE id=?",
+                     (generate_password_hash(new_password), token_row["user_id"]))
+        conn.execute("UPDATE password_reset_tokens SET used=1 WHERE id=?", (token_row["id"],))
+        conn.commit()
+        conn.close()
+        flash("Password reset successfully. Please login.", "success")
+        return redirect(url_for("login"))
+    conn.close()
+    return render_template("reset_password.html")
+
+
 @app.route("/admin/login", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
-        if request.form["username"] == "admin" and request.form["password"] == "admin123":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        conn = get_db()
+        admin = conn.execute("SELECT * FROM admins WHERE username=?", (username,)).fetchone()
+        conn.close()
+        if admin and check_password_hash(admin["password"], password):
             session["admin"] = True
+            session["admin_id"] = admin["id"]
+            session["admin_username"] = admin["username"]
             return redirect(url_for("admin_dashboard"))
         flash("Invalid username or password.", "danger")
     return render_template("admin/login.html")
+
+
+@app.route("/admin/change-password", methods=["GET", "POST"])
+@admin_required
+def admin_change_password():
+    if request.method == "POST":
+        current = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        if len(new_password) < 8:
+            flash("New password must be at least 8 characters.", "danger")
+            return render_template("change_password.html", user_type="admin")
+        if new_password != confirm:
+            flash("New password and confirmation do not match.", "danger")
+            return render_template("change_password.html", user_type="admin")
+        conn = get_db()
+        admin = conn.execute("SELECT * FROM admins WHERE id=?", (session.get("admin_id"),)).fetchone()
+        if not admin or not check_password_hash(admin["password"], current):
+            conn.close()
+            flash("Current password is incorrect.", "danger")
+            return render_template("change_password.html", user_type="admin")
+        conn.execute("UPDATE admins SET password=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                     (generate_password_hash(new_password), admin["id"]))
+        conn.commit()
+        conn.close()
+        flash("Admin password changed successfully.", "success")
+        return redirect(url_for("admin_dashboard"))
+    return render_template("change_password.html", user_type="admin")
 
 
 @app.route("/admin/logout")

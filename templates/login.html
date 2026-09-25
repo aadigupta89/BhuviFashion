@@ -2,8 +2,12 @@
 {% block title %}Login | Bhuvi Fashions{% endblock %}
 {% block content %}
 <div class="login-box user-login"><div class="account-mark">BF</div><h1>Welcome Back</h1>
-<p>Login to your Bhuvi Fashions account.</p>
-<form method="post"><input name="email" type="email" placeholder="Email Address" required>
-<input name="password" type="password" placeholder="Password" required><button class="btn">LOGIN</button></form>
+<p>Login with your email address or mobile number.</p>
+<form method="post">
+<input name="identifier" type="text" inputmode="email" placeholder="Email Address or Mobile Number" autocomplete="username" required>
+<input name="password" type="password" placeholder="Password" autocomplete="current-password" required>
+<button class="btn">LOGIN</button>
+</form>
+<p class="login-bottom"><a href="{{ url_for('forgot_password') }}">Forgot Password?</a></p>
 <p class="login-bottom">New customer? <a href="{{ url_for('register') }}">Create an account</a></p></div>
 {% endblock %}
